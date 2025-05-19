@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Water Sort Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      margin: 0;
+      background: #000;
+      color: white;
+    }
+    h1 {
+      margin-top: 20px;
+      font-size: 24px;
+    }
+    #controls {
+      margin: 10px;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    #game {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 14px;
+      padding: 20px;
+    }
+    .tube-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .tube {
+      width: 60px;
+      height: 240px;
+      background: white;
+      border: 3px solid #444;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column-reverse;
+      justify-content: flex-start;
+      align-items: center;
+      cursor: pointer;
+      position: relative;
+      transition: transform 0.2s;
+    }
+    .tube.selected {
+      transform: scale(1.1);
+      border-color: #2196f3;
+    }
+    .tick {
+      font-size: 24px;
+      margin-top: 6px;
+      color: lime;
+      visibility: hidden;
+    }
+    .tube.solved + .tick {
+      visibility: visible;
+    }
+    .block {
+      width: 90%;
+      height: 20%;
+      border-radius: 4px;
+      margin: 2px 0;
+      transition: all 0.2s ease;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #2196f3;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #level-info, #timer {
+      font-size: 18px;
+      margin: 5px;
+    }
+    #next-btn {
+      margin-top: 20px;
+      opacity: 0.4;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    #next-btn.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Mobile Portrait */
+    @media (max-width: 600px) {
+      .tube {
+        width: 44px;
+        height: 170px;
+      }
+      .tick {
+        font-size: 20px;
+      }
+    }
+
+    /* Landscape Mobile / Tablet */
+    @media (max-height: 480px) and (orientation: landscape) {
+      #game {
+        gap: 10px;
+        padding: 10px;
+      }
+      .tube {
+        width: 50px;
+        height: 180px;
+      }
+      .tick {
+        font-size: 18px;
+      }
+      button {
+        font-size: 14px;
+        padding: 8px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Water Sort Game</h1>
+  <div id="level-info">Level: 1</div>
+  <div id="timer">Time: 0s</div>
+  <div id="controls">
+    <button onclick="initGame()">Restart</button>
+    <button onclick="undoMove()">Back</button>
+  </div>
+  <div id="game"></div>
+  <button id="next-btn" onclick="nextLevel()">----&gt;</button>
+
+  <script>
+    let level = 1;
+    let tubes = [];
+    let selectedTube = null;
+    let timer = 0;
+    let timerInterval;
+    let moveHistory = [];
+
+    const nextBtn = document.getElementById("next-btn");
+    const timerDisplay = document.getElementById("timer");
+
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    function getColorsForLevel(lvl) {
+      const baseColors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'yellow', 'pink', 'brown'];
+      return baseColors.slice(0, Math.min(baseColors.length, 2 + Math.floor(lvl / 5)));
+    }
+
+    function initGame() {
+      const COLORS = getColorsForLevel(level);
+      const TUBE_HEIGHT = 4;
+      const TOTAL_TUBES = COLORS.length + 2;
+
+      const blocks = COLORS.flatMap(color => Array(TUBE_HEIGHT).fill(color));
+      shuffle(blocks);
+
+      tubes = Array.from({ length: TOTAL_TUBES }, () => []);
+      let idx = 0;
+      for (let i = 0; i < COLORS.length; i++) {
+        for (let j = 0; j < TUBE_HEIGHT; j++) {
+          tubes[i].push(blocks[idx++]);
+        }
+      }
+
+      selectedTube = null;
+      moveHistory = [];
+      document.getElementById("level-info").innerText = `Level: ${level}`;
+      nextBtn.classList.remove("active");
+
+      clearInterval(timerInterval);
+      timer = 0;
+      timerDisplay.textContent = `Time: ${timer}s`;
+      timerInterval = setInterval(() => {
+        timer++;
+        timerDisplay.textContent = `Time: ${timer}s`;
+      }, 1000);
+
+      render();
+    }
+
+    function render() {
+      const game = document.getElementById("game");
+      game.innerHTML = "";
+
+      tubes.forEach((tube, i) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "tube-container";
+
+        const tubeDiv = document.createElement("div");
+        tubeDiv.className = "tube";
+        if (selectedTube === i) tubeDiv.classList.add("selected");
+        if (isSolved(tube)) tubeDiv.classList.add("solved");
+        tubeDiv.addEventListener("click", () => handleClick(i));
+        tubeDiv.addEventListener("touchstart", () => handleClick(i));
+
+        tube.forEach(color => {
+          if (!color) return;
+          const block = document.createElement("div");
+          block.className = "block";
+          block.style.backgroundColor = color;
+          tubeDiv.appendChild(block);
+        });
+
+        const tick = document.createElement("div");
+        tick.className = "tick";
+        tick.textContent = "✓";
+
+        wrapper.appendChild(tubeDiv);
+        wrapper.appendChild(tick);
+        game.appendChild(wrapper);
+      });
+    }
+
+    function handleClick(index) {
+      if (selectedTube === index) {
+        selectedTube = null;
+      } else {
+        if (selectedTube === null) {
+          if (tubes[index].length === 0) return;
+          selectedTube = index;
+        } else {
+          if (selectedTube !== index) {
+            saveState();
+            tryPour(selectedTube, index);
+          }
+          selectedTube = null;
+        }
+      }
+      render();
+      if (checkWin()) {
+        clearInterval(timerInterval);
+        nextBtn.classList.add("active");
+      }
+    }
+
+    function tryPour(from, to) {
+      if (tubes[from].length === 0 || tubes[to].length >= 4) return;
+
+      const movingColor = tubes[from][tubes[from].length - 1];
+      const targetTop = tubes[to][tubes[to].length - 1] || movingColor;
+
+      if (movingColor !== targetTop && tubes[to].length !== 0) return;
+
+      let moved = 0;
+      while (
+        tubes[from].length &&
+        tubes[from][tubes[from].length - 1] === movingColor &&
+        tubes[to].length < 4
+      ) {
+        tubes[to].push(tubes[from].pop());
+        moved++;
+      }
+    }
+
+    function saveState() {
+      const state = tubes.map(tube => [...tube]);
+      moveHistory.push(state);
+    }
+
+    function undoMove() {
+      if (moveHistory.length > 0) {
+        tubes = moveHistory.pop();
+        selectedTube = null;
+        render();
+      }
+    }
+
+    function checkWin() {
+      return tubes.every(tube => tube.length === 0 || (tube.length === 4 && new Set(tube).size === 1));
+    }
+
+    function isSolved(tube) {
+      return tube.length === 4 && new Set(tube).size === 1;
+    }
+
+    function nextLevel() {
+      if (!nextBtn.classList.contains("active")) return;
+      if (level < 100) level++;
+      initGame();
+    }
+
+    initGame();
+  </script>
+</body>
+</html>
